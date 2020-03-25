@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 const APP_JWT_SECRET = process.env.APP_JWT_SECRET;
 
 const Mutation = {
-  signup: async (parent, { input }) => {
+  signup: async (parent, { input }, { pubsub }) => {
     const { email, password, name, lastName } = input;
 
     const user = await User.findOne({ email });
@@ -23,6 +23,7 @@ const Mutation = {
     });
     newUser.save();
 
+    pubsub.publish('user-added', { newUser });
     const token = jwt.sign({ userId: newUser._id }, APP_JWT_SECRET);
     return {
       token,

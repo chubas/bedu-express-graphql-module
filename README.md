@@ -1,93 +1,52 @@
-##### EJEMPLO 04
-## AGREGAR PROCESO DE AUTENTICACIÓN CON JWT
+##### EJEMPLO 01
+## OBTENIENDO SOLO UN USUARIO CON GRAPHQL
 
 ### OBJETIVO
-Generar un token de autorización utilizando JWT.
+Agregar un Query para obtener un usuario especifico usando argumentos.
 
 ### REQUERIMIENTOS
+
 1. Mongo 4 o superior. [Download](https://www.mongodb.com/download-center/community).
 
 ### DESARROLLO
-1. Para lograr el objetivo de este ejercicio, debemos primeramente preparar nuestra aplicación para generar los `json-web-tokens` y darle autorización a un usuario a acceder a ciertas secciones del API. Para ello, si observamos en el archivo `src/resolvers/mutation.js` en la línea número `23`, ya habíamos preparado anteriormente el `json` a resolver, en donde colocaremos el token de `jwt` generado cuando un usuario se haya registrado.
-```js
-  token: 'jwt-token-generated',
-```
+Lo primero que debemos saber antes de crear nuestro Query es saber que un argumento, es un atributo o conjunto de atributos que son enviados para realizar acciones dentro de nuestra lógica de negocio.
 
-2. Agregar una variable de entorno a nuestro archivo `.env` y cambiar el valor por una clave secreta.
-```
-APP_JWT_SECRET=secret
-```
-
-3. Para lograr generar los `jwt` web tokens vamos a instalar la dependencia.
-```sh
-$ yarn add jsonwebtoken
-# or
-$ npm i --save jsonwebtoken
-```
-
-4. Ahora, vamos a agregar la lógica para generar el token de autorización. Para ello, primeramente vamos a importar la dependencia dentro del archivo `src/resolvers/mutation.js` en el método `signup` y agregaremos la lógica una ves que se haya almacenado el usuario en Mongo DB.
-```js
-import jwt from 'jsonwebtoken'
-
-// ...
-newUser.save();
-
-const token = jwt.sign({ userId: newUser._id }, APP_JWT_SECRET);
-return {
-  token,
-  user: newUser,
-};
-```
-
-5. Una vez modificado el método de signup, vamos a probarlo accediendo dentro de `http://localhost:8080/graphql` y lanzando la mutación de `signup` para obtener el siguiente resultado.
-
-![GraphQL Signup with JWT Token](./screenshots/graphql-playground-token-jwt.png)
-
-6. Ahora, si todo ha ido bien, vamos a agregar una nueva mutación `login` para completar el proceso de autenticación. Vamos a agregar una nueva mutación dentro del archivo `src/schema/mutation.graphql` para el proceso de `login`.
-
+Los argumentos no necesitan ser obligatorios. Nosotros podemos agregar argumentos opcionales usando campos en valor `null`. Ahora para entender un poco mejor esto vamos a agregar el Query para obtener un usuario basado en su ID, esto lo agregaremos en nuestro archivo `src/schema/query.graphql`.
 ```graphql
-type Mutation {
-  signup(input: InputSignup!): AuthPayload!
-  login(email: String!, password: String!): AuthPayload
+type Query {
+  status: String
+  users: [User]
+  user(id: ID!): User!
 }
 ```
 
-7. Una vez agregada la mutación al schema, vamos a agregar la mutación a los resolvers, para desarrollar la siguiente lógica, dentro del archivo `src/resolvers/mutation.js`.
+Si observamos el Query que acabamos de definir, podremos observar que estamos usando un tipo `ID`, este es propio de GraphQL y nos permite enviar el valor de un Id ya sea en formato `alfanúmerico` o solo `númerico`.
 
+Ahora, procederemos ha agregar nuestra lógica del Query en el archivo `src/resolvers/query.js` en donde obtendremos el Id que se nos envía a través de la petición y retornaremos la información del usuario.
 ```js
 import User from '../models/User';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 
-// Getting JWT Secret from environment
-const APP_JWT_SECRET = process.env.APP_JWT_SECRET;
-
-const Mutation = {
-  signup: async (parent, { input }) => {
-    // ...
-  },
-  login: async (parent, { email, password }) => {
-    const user = await User.findOne({ email }).exec();
-    if (!user) {
+const Query = {
+  ...,
+  user: (_, { id }, { currentUser }) => {
+    if(!currentUser) {
       throw new Error('Unauthorized');
     }
-
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      throw new Error('Unauthorized');
-    }
-
-    const token = jwt.sign({ userId: user._id }, APP_JWT_SECRET);
-    return {
-      token,
-      user,
-    };
-  },
+    return User.findOne({ _id: id }).exec();
+  }
 };
 
-export default Mutation;
+export default Query;
 ```
 
-8. Ahora, vamos a probar la mutación `login` enviando el usuario y contraseña con el que te hayas registrado en el método de `signup`.
+Lo primero que estamos haciendo aquí es proteger la ruta para que solo usuarios autenticados puedan consumir este Query, recordemos que en los `resolvers` el segundo parámetro corresponde a los argumentos que se envían a través del `request`. Por último lo que hacemos es que a través de `mongoose` usamos el método `findOne` para enviar el `id` a buscar dentro de nuestra base de datos.
 
-![GraphQL Login](./screenshots/graphql-playground-login.png)
+Vamos a comprobar que todo vaya bien, vamos a acceder a `http://localhost:8080/graphql` para acceder a `Playground` y lanzar la petición. Para hacerlo, necesitaras autenticarte a través del método `login` y obtener el `token`.
+
+![GraphQL Playground Query User](./screenshots/graphql-playground-query-user.png)
+
+Ahora, podrás observar, que cuando enviamos un `Id` que no existe dentro de nuestra base de datos, recibimos un mensaje de que no podemos regresar un valor `null` ya que nuestro Query necesita retornar un elemento de tipo `User`.
+
+![GraphQL Playground Query Non-ExistsId](./screenshots/graphql-playground-not-id.png)
+
+¿Cómo harías para resolver este conflicto?
